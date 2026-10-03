@@ -5,16 +5,6 @@ local Store = DataStoreService:GetDataStore("HairGrower_Phase1_v1")
 local DataService = {}
 local RETRIES = 3
 
-local function getDefaultData()
-	return {
-		Coins = 100,
-		GrowthSpeedLevel = 1,
-		GrowthStartTime = nil,
-		GrowthDuration = nil,
-		HairType = nil,
-	}
-end
-
 local function retry(operation)
 	local lastError
 	for attempt = 1, RETRIES do
@@ -26,20 +16,32 @@ local function retry(operation)
 	return false, lastError
 end
 
-function DataService.Load(player)
-	if RunService:IsStudio() then
-		return getDefaultData()
-	end
+local function makeDefaultData()
+	return {
+		Coins = 100,
+		GrowthSpeedLevel = 1,
+		GrowthStartTime = nil,
+		GrowthDuration = nil,
+		HairType = nil,
+	}
+end
 
+function DataService.Load(player)
 	local ok, data = retry(function()
 		return Store:GetAsync("Player_" .. player.UserId)
 	end)
 	if not ok then
 		warn("Could not load data for " .. player.Name .. ": " .. tostring(data))
+		if RunService:IsStudio() then
+			-- Studio may run without API access; never write these guessed defaults back.
+			local defaultData = makeDefaultData()
+			defaultData.DoNotSave = true
+			return defaultData
+		end
 		return nil
 	end
 	if type(data) ~= "table" then
-		return getDefaultData()
+		return makeDefaultData()
 	end
 	local level = math.clamp(math.floor(tonumber(data.GrowthSpeedLevel) or 1), 1, 4)
 	local startTime = tonumber(data.GrowthStartTime)
@@ -60,8 +62,8 @@ function DataService.Load(player)
 end
 
 function DataService.Save(player, data)
-	if RunService:IsStudio() then
-		return true
+	if data.DoNotSave then
+		return false
 	end
 
 	local payload = {

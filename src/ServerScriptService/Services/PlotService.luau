@@ -27,10 +27,11 @@ local function createPlot(index)
 	prompt.ObjectText = "Your Plot"
 	prompt.HoldDuration = 0
 	prompt.MaxActivationDistance = 10
+	prompt.Enabled = false
 	prompt.Parent = marker
 	model.PrimaryPart = base
 	model.Parent = plotsFolder
-	return { Model = model, Marker = marker, Prompt = prompt, Owner = nil }
+	return { Model = model, Marker = marker, Prompt = prompt, PromptConnection = nil, Owner = nil }
 end
 
 function PlotService.Initialize()
@@ -71,9 +72,21 @@ function PlotService.Owns(player, plot)
 	return plot ~= nil and plotsByPlayer[player] == plot and plot.Owner == player
 end
 
+function PlotService.SetPromptConnection(plot, connection)
+	if not plot then return end
+	if plot.PromptConnection then
+		plot.PromptConnection:Disconnect()
+	end
+	plot.PromptConnection = connection
+end
+
 function PlotService.Release(player)
 	local plot = plotsByPlayer[player]
 	if plot then
+		if plot.PromptConnection then
+			plot.PromptConnection:Disconnect()
+			plot.PromptConnection = nil
+		end
 		plot.Owner = nil
 		plot.Model.Name = "UnclaimedPlot"
 		PlotService.SetStage(plot, 0, nil)
@@ -89,8 +102,9 @@ function PlotService.SetStage(plot, stage, hairType)
 	plot.Marker.Position = plot.Model.Ground.Position + Vector3.new(0, 0.5 + height / 2, 0)
 	local definition = hairType and require(game:GetService("ReplicatedStorage").Shared.HairConfig).Types[hairType]
 	plot.Marker.Color = definition and definition.Color or Color3.fromRGB(105, 72, 48)
-	plot.Prompt.Enabled = stage == 0
-	plot.Prompt.ActionText = stage == 0 and "Grow Hair" or "Growing..."
+	local isBald = stage == 0
+	plot.Prompt.Enabled = isBald and plot.Owner ~= nil
+	plot.Prompt.ActionText = isBald and "Grow Hair" or "Growing..."
 end
 
 return PlotService

@@ -9,12 +9,9 @@ local CurrencyService = require(Services.CurrencyService)
 local UpgradeService = require(Services.UpgradeService)
 local HairConfig = require(ReplicatedStorage.Shared.HairConfig)
 
-local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-if not remotes then
-	remotes = Instance.new("Folder")
-	remotes.Name = "Remotes"
-	remotes.Parent = ReplicatedStorage
-end
+local remotes = ReplicatedStorage:FindFirstChild("Remotes") or Instance.new("Folder")
+remotes.Name = "Remotes"
+remotes.Parent = ReplicatedStorage
 
 local function getRemote(name, className)
 	local remote = remotes:FindFirstChild(name)
@@ -26,7 +23,6 @@ local function getRemote(name, className)
 	return remote
 end
 
-local startRemote = getRemote("StartHairGrowth", "RemoteEvent")
 local harvestRemote = getRemote("HarvestHair", "RemoteEvent")
 local upgradeRemote = getRemote("BuyUpgrade", "RemoteEvent")
 local updateRemote = getRemote("UpdateGrowth", "RemoteEvent")
@@ -73,23 +69,18 @@ local function onPlayerAdded(player)
 	end
 	player.CharacterAdded:Connect(moveCharacterToPlot)
 	if player.Character then task.spawn(moveCharacterToPlot, player.Character) end
-	plot.Prompt.Triggered:Connect(function(triggeringPlayer)
+	local promptConnection = plot.Prompt.Triggered:Connect(function(triggeringPlayer)
 		if triggeringPlayer ~= player or not PlotService.Owns(triggeringPlayer, plot) then return end
 		local currentData = playerData[triggeringPlayer]
-		if currentData and HairService.Start(currentData) then publish(triggeringPlayer) end
+		local character = triggeringPlayer.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not currentData or not plot.Prompt.Enabled or not root then return end
+		if (root.Position - plot.Marker.Position).Magnitude > 12 then return end
+		if HairService.Start(currentData) then publish(triggeringPlayer) end
 	end)
+	PlotService.SetPromptConnection(plot, promptConnection)
 	publish(player)
 end
-
-startRemote.OnServerEvent:Connect(function(player)
-	local plot = PlotService.Get(player)
-	local data = playerData[player]
-	if not data or not PlotService.Owns(player, plot) then return end
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not root or (root.Position - plot.Marker.Position).Magnitude > 12 then return end
-	if HairService.Start(data) then publish(player) end
-end)
 
 harvestRemote.OnServerEvent:Connect(function(player)
 	local data = playerData[player]
