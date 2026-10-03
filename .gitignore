@@ -1,0 +1,8 @@
+# Roblox place files and Rojo build output
+*.rbxl
+*.rbxlx
+
+# Tooling and operating system files
+node_modules/
+.DS_Store
+Thumbs.db
