@@ -1,8 +1,19 @@
 local DataStoreService = game:GetService("DataStoreService")
+local RunService = game:GetService("RunService")
 local HairConfig = require(game:GetService("ReplicatedStorage").Shared.HairConfig)
 local Store = DataStoreService:GetDataStore("HairGrower_Phase1_v1")
 local DataService = {}
 local RETRIES = 3
+
+local function getDefaultData()
+	return {
+		Coins = 100,
+		GrowthSpeedLevel = 1,
+		GrowthStartTime = nil,
+		GrowthDuration = nil,
+		HairType = nil,
+	}
+end
 
 local function retry(operation)
 	local lastError
@@ -16,6 +27,10 @@ local function retry(operation)
 end
 
 function DataService.Load(player)
+	if RunService:IsStudio() then
+		return getDefaultData()
+	end
+
 	local ok, data = retry(function()
 		return Store:GetAsync("Player_" .. player.UserId)
 	end)
@@ -24,7 +39,7 @@ function DataService.Load(player)
 		return nil
 	end
 	if type(data) ~= "table" then
-		return { Coins = 100, GrowthSpeedLevel = 1, GrowthStartTime = nil, GrowthDuration = nil, HairType = nil }
+		return getDefaultData()
 	end
 	local level = math.clamp(math.floor(tonumber(data.GrowthSpeedLevel) or 1), 1, 4)
 	local startTime = tonumber(data.GrowthStartTime)
@@ -45,6 +60,10 @@ function DataService.Load(player)
 end
 
 function DataService.Save(player, data)
+	if RunService:IsStudio() then
+		return true
+	end
+
 	local payload = {
 		Coins = data.Coins,
 		GrowthSpeedLevel = data.GrowthSpeedLevel,

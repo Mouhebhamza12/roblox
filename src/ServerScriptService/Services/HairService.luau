@@ -29,7 +29,12 @@ function HairService.GetProgress(data)
 	if not data.GrowthStartTime or not data.GrowthDuration or data.GrowthDuration <= 0 then return 0, 0 end
 	local elapsed = math.max(0, os.time() - data.GrowthStartTime)
 	local progress = math.clamp(elapsed / data.GrowthDuration, 0, 1)
-	local stage = progress >= 1 and 5 or math.floor(progress * 5)
+	local stage
+	if progress >= 1 then
+		stage = 5
+	else
+		stage = math.clamp(math.floor(progress * 4) + 1, 1, 4)
+	end
 	return progress, stage
 end
 

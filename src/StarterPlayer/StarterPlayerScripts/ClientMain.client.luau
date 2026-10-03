@@ -1,10 +1,27 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
-local remotes = ReplicatedStorage:WaitForChild("Remotes")
-local harvestRemote = remotes:WaitForChild("HarvestHair")
-local upgradeRemote = remotes:WaitForChild("BuyUpgrade")
-local updateRemote = remotes:WaitForChild("UpdateGrowth")
+
+local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+if not remotes then
+	local attempts = 0
+	while not remotes and attempts < 50 do
+		remotes = ReplicatedStorage:FindFirstChild("Remotes")
+		if not remotes then
+			task.wait(0.2)
+		end
+		attempts += 1
+	end
+end
+
+if not remotes then
+	warn("Remotes folder was not created by the server. The server may not have started yet.")
+	return
+end
+
+local harvestRemote = remotes:FindFirstChild("HarvestHair") or remotes:WaitForChild("HarvestHair", 10)
+local upgradeRemote = remotes:FindFirstChild("BuyUpgrade") or remotes:WaitForChild("BuyUpgrade", 10)
+local updateRemote = remotes:FindFirstChild("UpdateGrowth") or remotes:WaitForChild("UpdateGrowth", 10)
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "HairGrowerUI"

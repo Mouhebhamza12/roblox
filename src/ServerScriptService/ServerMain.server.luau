@@ -9,9 +9,12 @@ local CurrencyService = require(Services.CurrencyService)
 local UpgradeService = require(Services.UpgradeService)
 local HairConfig = require(ReplicatedStorage.Shared.HairConfig)
 
-local remotes = ReplicatedStorage:FindFirstChild("Remotes") or Instance.new("Folder")
-remotes.Name = "Remotes"
-remotes.Parent = ReplicatedStorage
+local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+if not remotes then
+	remotes = Instance.new("Folder")
+	remotes.Name = "Remotes"
+	remotes.Parent = ReplicatedStorage
+end
 
 local function getRemote(name, className)
 	local remote = remotes:FindFirstChild(name)
@@ -53,6 +56,7 @@ end
 
 local function onPlayerAdded(player)
 	local data = DataService.Load(player)
+	if player.Parent ~= Players then return end
 	if not data then
 		-- Keep the player locked until data can be safely loaded; never save guessed defaults.
 		playerData[player] = nil

@@ -6,3 +6,7 @@
 node_modules/
 .DS_Store
 Thumbs.db
+
+# Local Luau/Roblox tool binaries
+.tools/
+*.exe
