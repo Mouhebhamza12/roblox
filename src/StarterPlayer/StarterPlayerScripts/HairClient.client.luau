@@ -39,6 +39,12 @@ do
 	for i=1,#cand,step do table.insert(DIRS,cand[i]) end
 end
 
+-- Escape text before putting it inside RichText (display names can contain < > &)
+local function esc(s)
+	s=s:gsub("&","&amp;") s=s:gsub("<","&lt;") s=s:gsub(">","&gt;") s=s:gsub('"',"&quot;") s=s:gsub("'","&apos;")
+	return s
+end
+
 local rigs={}
 local function newPart(m,head)
 	local p=Instance.new("Part")
@@ -157,7 +163,7 @@ RunS.Heartbeat:Connect(function(dt)
 		local key=ti..":"..math.floor(target)
 		if key~=rig.tagKey then
 			rig.tagKey=key
-			rig.tag.Text=string.format('%s\n<font color="#%s">%s Hair</font> - %d cm',plr.DisplayName,C.RarityColors[T.rarity]:ToHex(),T.name,math.floor(target))
+			rig.tag.Text=string.format('%s\n<font color="#%s">%s Hair</font> - %d cm',esc(plr.DisplayName),C.RarityColors[T.rarity]:ToHex(),T.name,math.floor(target))
 		end
 	end
 end)

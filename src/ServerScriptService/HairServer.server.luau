@@ -7,9 +7,43 @@ local R=RS:WaitForChild("HairRemotes")
 local Notify,FX,Shop=R.Notify,R.FX,R.Shop
 local PINK=Color3.fromRGB(255,120,180)
 
+local RunService=game:GetService("RunService")
+local IS_STUDIO=RunService:IsStudio()
+-- Studio playtests use their own save so testing never changes real player progress.
+local STORE_NAME=IS_STUDIO and "HairData_v3_STUDIO" or "HairData_v3"
 local store
-pcall(function() store=DSS:GetDataStore("HairData_v3") end)
+pcall(function() store=DSS:GetDataStore(STORE_NAME) end)
 local data={}
+
+local function key(p) return "u"..p.UserId end
+
+-- Run a DataStore call up to `tries` times, waiting 2s, 4s... between attempts.
+local function retry(fn,tries)
+	local lastErr
+	for i=1,tries do
+		local ok,res=pcall(fn)
+		if ok then return true,res end
+		lastErr=res
+		if i<tries then task.wait(2^i) end
+	end
+	return false,lastErr
+end
+
+-- Turn whatever is stored into safe, in-range values (protects against corrupt or old data).
+local function cleanNumber(v,default,min,max)
+	if typeof(v)~="number" or v~=v or v==math.huge or v==-math.huge then return default end
+	return math.clamp(v,min,max)
+end
+local function sanitize(raw)
+	raw=typeof(raw)=="table" and raw or {}
+	local d={}
+	d.Type=math.floor(cleanNumber(raw.Type,1,1,#C.Types))
+	d.Zone=math.floor(cleanNumber(raw.Zone,1,1,#C.Zones))
+	d.Cash=math.floor(cleanNumber(raw.Cash,C.StartCash,0,1e15))
+	d.Length=cleanNumber(raw.Length,0,0,C.Types[d.Type].cap)
+	d.Version=math.floor(cleanNumber(raw.Version,0,0,1e12)) -- save counter, used to block stale saves
+	return d
+end
 
 local function sync(p)
 	local d=data[p] if not d then return end
@@ -35,22 +69,57 @@ local function onCharacter(char)
 	if hum then hum.WalkSpeed=C.WalkSpeed hum.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None end
 end
 
+-- Save with UpdateAsync. If the stored Version is not the one this server loaded/last wrote,
+-- another server saved newer data, so this server cancels instead of overwriting it.
 local function save(p)
 	local d=data[p]
-	if not (store and d) then return end
-	local ok,err=pcall(function() store:SetAsync("u"..p.UserId,{Cash=d.Cash,Length=d.Length,Type=d.Type,Zone=d.Zone}) end)
-	if not ok then warn("[Hair] save failed:",err) end
+	if not d or not store or d.noSave then return end
+	while d.saving do task.wait(0.1) end
+	if d.noSave then return end
+	d.saving=true
+	local payload={Cash=d.Cash,Length=d.Length,Type=d.Type,Zone=d.Zone}
+	local stale=false
+	local ok,err=retry(function()
+		return store:UpdateAsync(key(p),function(old)
+			local oldV=(typeof(old)=="table" and tonumber(old.Version)) or 0
+			if oldV~=d.Version then stale=true return nil end
+			stale=false
+			payload.Version=d.Version+1
+			return payload
+		end)
+	end,3)
+	if ok and not stale then
+		d.Version=payload.Version
+	elseif ok and stale then
+		d.noSave=true
+		warn("[Hair] Not saving "..p.Name..": newer data was saved by another server.")
+	else
+		warn("[Hair] Save failed for "..p.Name..": "..tostring(err))
+	end
+	d.saving=false
 end
 
 local function onJoin(p)
-	local saved
-	if store then
-		local ok,res=pcall(function() return store:GetAsync("u"..p.UserId) end)
-		if ok then saved=res else warn("[Hair] load failed:",res) end
+	-- status: "loaded" (has a save), "new" (no save yet) or "failed" (could not read)
+	local status,raw
+	if not store then
+		status="failed"
+	elseif IS_STUDIO and workspace:GetAttribute("DebugFailLoad") then
+		status="failed" -- Studio-only switch to test the failure path
+	else
+		local ok,res=retry(function() return store:GetAsync(key(p)) end,3)
+		if not ok then status="failed" warn("[Hair] Load failed for "..p.Name..": "..tostring(res))
+		elseif res==nil then status="new"
+		else status="loaded" raw=res end
 	end
-	saved=saved or {}
 	if not p.Parent then return end
-	local d={Cash=saved.Cash or C.StartCash,Length=saved.Length or 0,Type=saved.Type or 1,Zone=saved.Zone or 1,lastSell=0,lastFull=0}
+	if status=="failed" then
+		-- Never let a failed load turn into a fresh save that wipes real progress.
+		p:Kick("Your hair data couldn't load, so we stopped the game to protect your progress. Please rejoin!")
+		return
+	end
+	local d=sanitize(raw)
+	d.lastSell=0 d.lastFull=0 d.lastShop=0
 	local ls=Instance.new("Folder") ls.Name="leaderstats"
 	d.CashStat=Instance.new("IntValue") d.CashStat.Name="Cash" d.CashStat.Parent=ls
 	d.HairStat=Instance.new("IntValue") d.HairStat.Name="Hair" d.HairStat.Parent=ls
@@ -131,7 +200,9 @@ end
 -- Hair type shop
 Shop.OnServerEvent:Connect(function(p,kind,i)
 	local d=data[p]
-	if not d or kind~="type" or typeof(i)~="number" then return end
+	if not d or kind~="type" or typeof(i)~="number" or i~=i then return end
+	if os.clock()-d.lastShop<0.25 then return end -- simple rate limit
+	d.lastShop=os.clock()
 	i=math.floor(i)
 	local T=C.Types[i]
 	if not T or i<=d.Type then return end
@@ -145,8 +216,13 @@ Players.PlayerAdded:Connect(onJoin)
 for _,p in ipairs(Players:GetPlayers()) do task.spawn(onJoin,p) end
 Players.PlayerRemoving:Connect(function(p) save(p) data[p]=nil end)
 game:BindToClose(function()
-	for p in pairs(data) do task.spawn(save,p) end
-	task.wait(2)
+	local pending=0
+	for p in pairs(data) do
+		pending+=1
+		task.spawn(function() save(p) pending-=1 end)
+	end
+	local start=os.clock()
+	while pending>0 and os.clock()-start<25 do task.wait(0.1) end
 end)
 while true do
 	task.wait(C.AutosaveInterval)
